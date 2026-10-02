@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1420">
+<meta name="description" content="Terrain Drive: Open Roads — браузерный автосимулятор: шесть зон, пять машин, шесть режимов.">
+<title>Terrain Drive: Open Roads</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <!-- Главное меню -->
+  <section id="scr-main" class="screen">
+    <div class="main-wrap">
+      <div class="logo">
+        <div class="logo-top">TERRAIN DRIVE</div>
+        <div class="logo-sub">Open Roads · VinCoder</div>
+      </div>
+      <div class="profile" id="profile"></div>
+      <nav class="menu">
+        <button class="btn big primary" data-go="zones">Играть</button>
+        <button class="btn big" data-go="garage">Гараж</button>
+        <button class="btn big" data-go="settings">Настройки</button>
+        <button class="btn big" data-go="help">Управление</button>
+      </nav>
+    </div>
+  </section>
+
+  <!-- Выбор зоны и режима -->
+  <section id="scr-zones" class="screen panel-screen" hidden>
+    <header class="bar"><button class="btn back" data-go="main">← Назад</button><h2>Выберите зону</h2><div class="bar-info" id="zones-car"></div></header>
+    <div class="zones" id="zone-list"></div>
+    <div class="modal" id="mode-panel" hidden>
+      <div class="modal-box">
+        <h2 id="mode-zone"></h2>
+        <p class="muted" id="mode-zone-desc"></p>
+        <div class="modes" id="mode-list"></div>
+        <button class="btn" id="mode-close">Закрыть</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Гараж -->
+  <section id="scr-garage" class="screen garage" hidden>
+    <header class="bar"><button class="btn back" data-go="main">← Назад</button><h2>Гараж</h2><div class="bar-info" id="garage-credits"></div></header>
+    <div class="garage-body">
+      <div class="car-list" id="car-list"></div>
+      <div class="car-info" id="car-info"></div>
+    </div>
+  </section>
+
+  <!-- Настройки -->
+  <section id="scr-settings" class="screen panel-screen" hidden>
+    <header class="bar"><button class="btn back" id="settings-back">← Назад</button><h2>Настройки</h2><div></div></header>
+    <div class="card form">
+      <label>Качество графики
+        <select id="set-quality"><option value="auto">Авто</option><option value="low">Низкое</option><option value="medium">Среднее</option><option value="high">Высокое</option></select>
+      </label>
+      <label>Громкость <input type="range" id="set-volume" min="0" max="1" step="0.05"></label>
+      <label>Чувствительность руля <input type="range" id="set-steer" min="0.5" max="1.5" step="0.05"></label>
+      <label>Камера по умолчанию
+        <select id="set-camera"><option value="0">Сзади</option><option value="1">Сзади, дальняя</option><option value="2">С капота</option></select>
+      </label>
+      <label>Сенсорное управление
+        <select id="set-touch"><option value="auto">Авто</option><option value="on">Всегда</option><option value="off">Выключено</option></select>
+      </label>
+      <label class="check"><input type="checkbox" id="set-fps"> Показывать FPS</label>
+      <p class="muted small">Качество графики применяется со следующего заезда.</p>
+      <button class="btn danger" id="set-reset">Сбросить прогресс</button>
+    </div>
+  </section>
+
+  <!-- Управление -->
+  <section id="scr-help" class="screen panel-screen" hidden>
+    <header class="bar"><button class="btn back" data-go="main">← Назад</button><h2>Управление</h2><div></div></header>
+    <div class="card help">
+      <table>
+        <tr><td>W / ↑</td><td>Газ</td></tr>
+        <tr><td>S / ↓</td><td>Тормоз, задний ход</td></tr>
+        <tr><td>A D / ← →</td><td>Руль</td></tr>
+        <tr><td>Пробел</td><td>Ручник</td></tr>
+        <tr><td>R</td><td>Вернуться на дорогу / к чекпоинту</td></tr>
+        <tr><td>C</td><td>Сменить камеру</td></tr>
+        <tr><td>Esc / P</td><td>Пауза</td></tr>
+        <tr><td>M</td><td>Звук вкл/выкл</td></tr>
+      </table>
+      <p class="muted">Геймпад: стик — руль, RT — газ, LT — тормоз, B/RB — ручник, Y — возврат, X — камера, Start — пауза.</p>
+      <p class="muted">На телефоне появляются сенсорные кнопки. Покрытие влияет на сцепление и скорость: асфальт, гравий, грязь, песок, трава, камни, вода. Полноприводные машины уверенней на бездорожье.</p>
+      <p class="muted">Сильные удары повреждают машину. Ремонт — в гараже или на синих площадках в режиме свободной езды.</p>
+    </div>
+  </section>
+
+  <section id="scr-loading" class="screen center" hidden>
+    <div class="loader"><div class="spinner"></div><div id="loading-text">Загрузка зоны…</div></div>
+  </section>
+
+  <!-- HUD -->
+  <div id="hud" hidden>
+    <div class="hud-tl">
+      <div id="hud-mode"></div>
+      <div id="hud-main">0:00.00</div>
+      <div id="hud-sub"></div>
+    </div>
+    <div class="hud-tc" id="hud-arrow">
+      <div id="hud-arrow-i">▲</div>
+      <div id="hud-dist"></div>
+    </div>
+    <div class="hud-tr">
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div id="hud-fps"></div>
+    </div>
+    <button class="hud-pause" data-action="pause" aria-label="Пауза">❚❚</button>
+    <div class="hud-br">
+      <div class="speedo"><span id="hud-speed">0</span><small>км/ч</small></div>
+      <div class="gearbox"><span id="hud-gear">N</span><div class="rpm"><div id="hud-rpm"></div></div></div>
+      <div class="health"><div id="hud-health"></div></div>
+      <div id="hud-surface"></div>
+    </div>
+    <div id="hud-msg"></div>
+  </div>
+
+  <!-- Сенсорное управление -->
+  <div id="touch" hidden>
+    <div class="t-left">
+      <div class="tbtn" data-hold="left">◀</div>
+      <div class="tbtn" data-hold="right">▶</div>
+    </div>
+    <div class="t-right">
+      <div class="t-col">
+        <div class="tbtn small" data-hold="hand">РУЧ</div>
+        <div class="tbtn brake" data-hold="brake">ТОРМ</div>
+      </div>
+      <div class="tbtn gas" data-hold="gas">ГАЗ</div>
+    </div>
+    <div class="t-top">
+      <div class="tbtn mini" data-action="pause">❚❚</div>
+      <div class="tbtn mini" data-action="reset">↺</div>
+      <div class="tbtn mini" data-action="camera">🎥</div>
+    </div>
+  </div>
+
+  <!-- Пауза -->
+  <section id="scr-pause" class="screen overlay center" hidden>
+    <div class="modal-box">
+      <h2>Пауза</h2>
+      <button class="btn big primary" id="p-resume">Продолжить</button>
+      <button class="btn big" id="p-restart">Начать заново</button>
+      <button class="btn big" id="p-respawn">Вернуться на дорогу</button>
+      <button class="btn big" id="p-finish" hidden>Завершить поездку</button>
+      <button class="btn big" id="p-menu">В меню</button>
+    </div>
+  </section>
+
+  <!-- Результат -->
+  <section id="scr-result" class="screen overlay center" hidden>
+    <div class="modal-box result">
+      <h2 id="r-title"></h2>
+      <p id="r-reason" class="muted"></p>
+      <div id="r-medal"></div>
+      <div class="r-stats" id="r-stats"></div>
+      <div class="r-buttons">
+        <button class="btn big primary" id="r-again">Ещё раз</button>
+        <button class="btn big" id="r-zones">Другая зона</button>
+        <button class="btn big" id="r-garage">Гараж</button>
+      </div>
+    </div>
+  </section>
+  <div id="toast"></div>
+</div>
+
+<noscript>Для игры нужен JavaScript.</noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
