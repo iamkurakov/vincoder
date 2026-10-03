@@ -25,8 +25,8 @@ export const VEHICLES = [
   { id: 'sedan', name: 'Городской седан', desc: 'Послушный и экономный. Хорош в городе, на бездорожье буксует.',
     drive: 'FWD', color: 0xc7c9d1, price: 0, level: 1, mass: 1350, torque: 2400, top: 185, offroad: 0.15,
     health: 100, rating: [6, 5, 2, 5], body: 'sedan', clearance: 0.0, brake: 9000, grip: 1.0 },
-  { id: 'suv', name: 'Внедорожник', desc: 'Большой современный внедорожник: полный привод, высокая подвеска, прочный кузов.',
-    drive: 'AWD', color: 0x6b0d1f, price: 2500, level: 2, mass: 2300, torque: 4300, top: 190, offroad: 0.85,
+  { id: 'suv', name: 'VinCoder V9', desc: 'Флагманский кроссовер VinCoder: полный привод, пневмоподвеска, сквозные световые полосы и парящая чёрная крыша.',
+    drive: 'AWD', color: 0x1fa5b3, price: 0, level: 1, mass: 2300, torque: 4300, top: 190, offroad: 0.85,
     health: 160, rating: [6, 6, 9, 8], body: 'suv', clearance: 0.18, brake: 15000, grip: 1.0 },
   { id: 'pickup', name: 'Пикап', desc: 'Тяжёлый и неубиваемый. Медленно разгоняется, зато везде проедет.',
     drive: 'AWD', color: 0xedede6, price: 3500, level: 3, mass: 2400, torque: 3600, top: 170, offroad: 0.70,
@@ -39,7 +39,7 @@ export const VEHICLES = [
     health: 70, rating: [10, 9, 1, 3], body: 'sport', clearance: -0.04, brake: 12000, grip: 1.15 },
 ];
 
-export const PAINTS = [null, 0xd91414, 0x1f59d9, 0x1e8c3a, 0xf2b705, 0x111214, 0xf2f2f2, 0xff6a00, 0x7a3fd1];
+export const PAINTS = [null, 0xd91414, 0x1f59d9, 0x1e8c3a, 0xf2b705, 0x111214, 0xf2f2f2, 0xff6a00, 0x7a3fd1, 0x0b5363, 0x5f93b5];
 
 export const UPGRADES = [
   { id: 'engine',   name: 'Двигатель',     desc: '+8% мощности, +4% макс. скорости за уровень' },

@@ -15,7 +15,7 @@ function mergeModel(def) {
   model.root.updateMatrixWorld(true);
   const parts = { paint: { pos: [], nor: [] }, rest: { pos: [], nor: [], col: [] } };
   model.root.traverse(o => {
-    if (!o.isMesh) return;
+    if (!o.isMesh || o.userData.noMerge) return;
     const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     g.applyMatrix4(o.matrixWorld);
     const isPaint = o.material === model.paintMat;

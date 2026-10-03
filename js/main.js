@@ -10,7 +10,7 @@ import { buildCarModel, vehicleSpec } from './vehicle.js';
 const $ = (id) => document.getElementById(id);
 const DRIVE = { FWD: 'передний', RWD: 'задний', AWD: 'полный' };
 const ZONE_ART = {
-  TestTrack: 'linear-gradient(160deg,#ff9a3c 0%,#6d8f45 55%,#3b4a2c 100%)',
+  TestTrack: 'linear-gradient(160deg,#19b3c2 0%,#6d8f45 55%,#3b4a2c 100%)',
   Highway: 'linear-gradient(160deg,#7fb2e6 0%,#56708a 50%,#2f3a46 100%)',
   City: 'linear-gradient(160deg,#9fb3c4 0%,#5d6470 55%,#2b2f38 100%)',
   Forest: 'linear-gradient(160deg,#a9c79a 0%,#2f5a2f 55%,#1b2e1c 100%)',
@@ -88,19 +88,19 @@ class App {
   // ---------- Витрина ----------
   _buildShowroom() {
     const s = this.show = new THREE.Scene();
-    s.background = new THREE.Color(0x10151f);
-    s.fog = new THREE.Fog(0x10151f, 14, 40);
-    s.add(new THREE.HemisphereLight(0xbcd2ff, 0x1a1410, 1.4));
+    s.background = new THREE.Color(0x072a33);
+    s.fog = new THREE.Fog(0x072a33, 14, 40);
+    s.add(new THREE.HemisphereLight(0xcdf3f6, 0x0a1a1e, 1.4));
     const key = new THREE.DirectionalLight(0xffffff, 3);
     key.position.set(5, 9, 6); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
     Object.assign(key.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
     s.add(key);
-    const rim = new THREE.DirectionalLight(0xff9a3c, 2.2); rim.position.set(-6, 3, -6); s.add(rim);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x161c28, roughness: 0.9 }));
+    const rim = new THREE.DirectionalLight(0x6fe0e6, 2.4); rim.position.set(-6, 3, -6); s.add(rim);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x0a3039, roughness: 0.9 }));
     floor.receiveShadow = true; s.add(floor);
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.7, 0.12, 64), new THREE.MeshStandardMaterial({ color: 0x2a303b, metalness: 0.6, roughness: 0.35 }));
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.7, 0.12, 64), new THREE.MeshStandardMaterial({ color: 0x0e3e49, metalness: 0.6, roughness: 0.35 }));
     table.position.y = 0.06; table.receiveShadow = true; s.add(table);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.65, 0.03, 8, 96).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff8a1f }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.65, 0.03, 8, 96).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x19b3c2 }));
     ring.position.y = 0.12; s.add(ring);
     this.turn = new THREE.Group(); this.turn.position.y = 0.12; s.add(this.turn);
     this.showAngle = 0.6;
