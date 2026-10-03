@@ -9,7 +9,7 @@ const V3 = THREE.Vector3;
 // Размеры и подвеска для каждого типа кузова
 const TYPES = {
   sedan:  { w: 1.84, l: 4.5, h: 1.42, r: 0.34, rest: 0.30, comH: 0.55, wb: 2.70, track: 1.56, bodyY: 0.30, bodyH: 0.62, cabH: 0.52, cabL: 2.3, cabZ: -0.25, gears: 6 },
-  suv:    { w: 2.00, l: 4.8, h: 1.85, r: 0.43, rest: 0.42, comH: 0.82, wb: 2.90, track: 1.70, bodyY: 0.48, bodyH: 0.85, cabH: 0.62, cabL: 2.8, cabZ: -0.35, gears: 6 },
+  suv:    { w: 2.00, l: 5.1, h: 1.85, r: 0.43, rest: 0.42, comH: 0.82, wb: 3.05, track: 1.70, bodyY: 0.48, bodyH: 0.85, cabH: 0.62, cabL: 2.8, cabZ: -0.35, gears: 6 },
   pickup: { w: 2.00, l: 5.3, h: 1.85, r: 0.43, rest: 0.42, comH: 0.80, wb: 3.30, track: 1.70, bodyY: 0.50, bodyH: 0.78, cabH: 0.68, cabL: 1.75, cabZ: 0.45, gears: 5, bed: true },
   rally:  { w: 1.80, l: 4.3, h: 1.45, r: 0.34, rest: 0.36, comH: 0.58, wb: 2.60, track: 1.55, bodyY: 0.34, bodyH: 0.6, cabH: 0.54, cabL: 2.2, cabZ: -0.3, gears: 6, spoiler: true },
   sport:  { w: 1.95, l: 4.5, h: 1.22, r: 0.35, rest: 0.22, comH: 0.45, wb: 2.65, track: 1.65, bodyY: 0.22, bodyH: 0.52, cabH: 0.42, cabL: 1.9, cabZ: -0.35, gears: 6, spoiler: true },
@@ -45,6 +45,7 @@ function prism(wb, wt, zb0, zb1, zt0, zt1, h) {
 }
 
 export function buildCarModel(def, paint) {
+  if (def.body === 'suv') return buildSuvModel(def, paint);
   const T = TYPES[def.body];
   const root = new THREE.Group();
   const body = new THREE.Group();
@@ -111,6 +112,242 @@ export function buildCarModel(def, paint) {
     const spin = new THREE.Group();
     const t = new THREE.Mesh(tireGeo, tireMat); t.castShadow = true;
     spin.add(t, new THREE.Mesh(rimGeo, rimMat), new THREE.Mesh(spokeGeo, rimMat));
+    pivot.add(spin);
+    root.add(pivot);
+    wheels.push({ pivot, spin });
+  }
+  return { root, wheels, tailMat, paintMat };
+}
+
+// ---------- Флагманский кроссовер VinCoder: детальная модель ----------
+// Боковой профиль задаётся точками (z, y) и выдавливается по ширине машины.
+// taper(y) — множитель ширины по высоте (завал боковин к крыше).
+function sideExtrude(pts, width, bevel, taper) {
+  const shape = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y)));
+  const depth = width - 2 * bevel;
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 12 });
+  g.rotateY(-Math.PI / 2);
+  g.translate(depth / 2, 0, 0);
+  if (taper) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setX(i, p.getX(i) * taper(p.getY(i)));
+    g.computeVertexNormals();
+  }
+  return g;
+}
+
+// Точки колёсной арки по нижней кромке профиля (от зада к носу)
+function archPts(cz, r, cy, yb, steps = 16) {
+  const a0 = Math.asin((yb - cy) / r);
+  const out = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = Math.PI - a0 - (Math.PI - 2 * a0) * i / steps;
+    out.push([cz + r * Math.cos(t), cy + r * Math.sin(t)]);
+  }
+  return out;
+}
+
+// Пластиковая накладка арки: дуга-полоса толщиной depth по оси x
+function archBand(r0, r1, a0, depth) {
+  const s = new THREE.Shape();
+  s.absarc(0, 0, r1, a0, Math.PI - a0, false);
+  s.absarc(0, 0, r0, Math.PI - a0, a0, true);
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 24 });
+  g.rotateY(-Math.PI / 2);
+  g.translate(depth / 2, 0, 0);
+  return g;
+}
+
+// Плоская деталь (стекло) на наклонной боковине: x вычисляется из высоты
+function sidePane(pts, side, hw) {
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y))));
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const z = p.getX(i), y = p.getY(i); p.setXYZ(i, side * hw(y), y, z); }
+  g.computeVertexNormals();
+  return g;
+}
+
+function quadGeo(a, b, c, d) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+const TEX = {};
+function labelTex(key, text, w, h, bg, fg, font) {
+  if (TEX[key]) return TEX[key];
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.strokeStyle = '#0b5363'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6); }
+  g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, w / 2, h / 2 + 2);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return (TEX[key] = t);
+}
+
+function buildSuvModel(def, paint) {
+  const T = TYPES.suv;
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const paintMat = new THREE.MeshPhysicalMaterial({ color: paint || def.color, metalness: 0.22, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const pianoMat = new THREE.MeshStandardMaterial({ color: 0x0a0c0f, metalness: 0.4, roughness: 0.16 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x2b4352, metalness: 0.35, roughness: 0.06, side: THREE.DoubleSide });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x17191c, roughness: 0.75 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcfd8de, metalness: 1, roughness: 0.22 });
+  const seamMat = new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 0.9 });
+  const smokeMat = new THREE.MeshStandardMaterial({ color: 0x14080a, metalness: 0.3, roughness: 0.1 });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xfffbe8, emissive: 0xfff2c0, emissiveIntensity: 0.8 });
+  const drlMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe6f7ff, emissiveIntensity: 1.4 });
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1010, emissiveIntensity: 0.4 });
+  const wellMat = new THREE.MeshStandardMaterial({ color: 0x0c0d0f, roughness: 0.95, side: THREE.DoubleSide });
+  const reflMat = new THREE.MeshStandardMaterial({ color: 0x6a0a0a, emissive: 0x400000, roughness: 0.3 });
+  const add = (geo, mat, x = 0, y = 0, z = 0, parent = body) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
+  };
+  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const cl = (v) => clamp(v, 0, 1);
+  const yb = 0.45, fz = T.wb / 2, cy = T.r;
+
+  // --- нижняя часть кузова: капот, двери с арками, багажник ---
+  const lower = [
+    [-2.38, yb], ...archPts(-fz, 0.49, cy, yb), ...archPts(fz, 0.49, cy, yb), [2.36, yb],
+    [2.50, 0.50], [2.57, 0.64], [2.61, 0.86], [2.58, 1.00], [2.47, 1.08], [2.0, 1.15], [1.45, 1.20],
+    [0, 1.23], [-2.05, 1.25], [-2.44, 1.24], [-2.54, 1.17], [-2.57, 0.95], [-2.56, 0.62], [-2.50, 0.50],
+  ];
+  const taperL = (y) => 1 - 0.05 * cl((y - 1.0) / 0.3);
+  const hwL = (y) => 1.0 * taperL(y);
+  add(sideExtrude(lower, 2.0, 0.06, taperL), paintMat);
+
+  // --- остекление и «парящая» чёрная крыша ---
+  const gh = [[1.45, 1.19], [0.44, 1.76], [0.24, 1.80], [-1.95, 1.81], [-2.22, 1.77], [-2.34, 1.54], [-2.42, 1.24], [-2.30, 1.19]];
+  const taperG = (y) => 1 - 0.13 * cl((y - 1.19) / 0.62);
+  const hwG = (y) => 0.92 * taperG(y) + 0.004;
+  add(sideExtrude(gh, 1.84, 0.05, taperG), pianoMat);
+  // боковые стёкла (между ними видны чёрные стойки B и C)
+  const panes = [
+    [[1.20, 1.27], [0.48, 1.70], [-0.30, 1.70], [-0.30, 1.27]],
+    [[-0.42, 1.27], [-0.42, 1.70], [-1.30, 1.70], [-1.30, 1.27]],
+    [[-1.42, 1.27], [-1.42, 1.70], [-2.10, 1.70], [-2.24, 1.42], [-2.28, 1.27]],
+  ];
+  for (const side of [1, -1]) for (const p of panes) add(sidePane(p, side, hwG), glassMat);
+  // лобовое стекло
+  const wsZ = (y) => 1.45 - (y - 1.19) * 1.01 / 0.57;
+  const wn = [0.491, 0.871], wo = 0.056;
+  const wsP = (x, y) => [x, y + wn[1] * wo, wsZ(y) + wn[0] * wo];
+  add(quadGeo(wsP(-0.84, 1.23), wsP(0.84, 1.23), wsP(0.74, 1.73), wsP(-0.74, 1.73)), glassMat);
+  // заднее стекло
+  add(quadGeo([0.74, 1.30, -2.47], [-0.74, 1.30, -2.47], [-0.70, 1.54, -2.405], [0.70, 1.54, -2.405]), glassMat);
+  add(quadGeo([0.70, 1.54, -2.405], [-0.70, 1.54, -2.405], [-0.64, 1.71, -2.315], [0.64, 1.71, -2.315]), glassMat);
+  // спойлер над задним стеклом, лидар, антенна
+  add(box(1.56, 0.045, 0.24), pianoMat, 0, 1.845, -2.3).rotation.x = -0.08;
+  add(box(0.34, 0.07, 0.18), pianoMat, 0, 1.875, 0.28);
+  add(box(0.06, 0.07, 0.16), pianoMat, 0, 1.885, -1.85);
+
+  // --- боковины: накладки, швы дверей, ручки, зеркала ---
+  for (const s of [1, -1]) {
+    // накладки колёсных арок
+    for (const z of [fz, -fz]) {
+      add(archBand(0.49, 0.545, 0.03, 0.08), trimMat, s * 0.975, cy, z);
+      // подкрылок, чтобы сквозь диск не просвечивал кузов
+      add(new THREE.CylinderGeometry(0.49, 0.49, 0.5, 20, 1, true, 0, Math.PI).rotateZ(Math.PI / 2), wellMat, s * 0.72, cy, z);
+    }
+    // пороги и хромированный молдинг
+    add(box(0.04, 0.13, 1.94), trimMat, s * 0.99, 0.53, 0);
+    add(box(0.012, 0.018, 1.8), chromeMat, s * 1.008, 0.6, 0);
+    // швы дверей
+    for (const [z, y0] of [[1.02, 0.95], [-0.36, 0.56], [-1.03, 0.95]]) {
+      add(box(0.006, 1.24 - y0, 0.012), seamMat, s * (hwL((y0 + 1.24) / 2) + 0.002), (y0 + 1.24) / 2, z);
+    }
+    // утопленные ручки
+    for (const z of [0.12, -0.92]) add(box(0.01, 0.03, 0.24), chromeMat, s * (hwL(1.1) + 0.004), 1.1, z);
+    // зеркала
+    add(box(0.12, 0.05, 0.12), pianoMat, s * 0.98, 1.27, 1.1);
+    const mir = add(box(0.1, 0.13, 0.24), pianoMat, s * 1.08, 1.34, 1.08);
+    mir.rotation.y = s * 0.12;
+    add(box(0.012, 0.02, 0.16), drlMat, s * 1.13, 1.305, 1.09);
+  }
+
+  // --- корма: сквозная светодиодная полоса, номер, бампер ---
+  add(box(1.96, 0.1, 0.04), smokeMat, 0, 1.165, -2.6);
+  add(box(1.9, 0.035, 0.02), tailMat, 0, 1.165, -2.625);
+  for (const s of [1, -1]) {
+    add(box(0.03, 0.035, 0.34), tailMat, s * 0.985, 1.165, -2.42);
+    add(box(0.035, 0.09, 0.36), smokeMat, s * 0.975, 1.165, -2.42);
+    add(box(0.14, 0.035, 0.022), drlMat, s * 0.5, 1.165, -2.63).scale.y = 0.4; // фонари заднего хода
+  }
+  // контур двери багажника
+  for (const s of [1, -1]) add(box(0.008, 0.5, 0.008), seamMat, s * 0.86, 0.95, -2.636);
+  add(box(1.72, 0.008, 0.008), seamMat, 0, 0.70, -2.636);
+  // эмблема
+  const badge = add(new THREE.PlaneGeometry(0.62, 0.075), new THREE.MeshStandardMaterial({
+    map: labelTex('badge', 'VINCODER', 512, 64, null, '#e8f0f4', '900 italic 54px Arial, sans-serif'), transparent: true, metalness: 0.6, roughness: 0.3,
+  }), 0, 1.03, -2.637);
+  badge.rotation.y = Math.PI; badge.castShadow = false; badge.userData.noMerge = true;
+  // номерной знак
+  add(box(0.62, 0.17, 0.01), trimMat, 0, 0.8, -2.634);
+  const plate = add(new THREE.PlaneGeometry(0.52, 0.115), new THREE.MeshStandardMaterial({
+    map: labelTex('plate', 'VINCODER', 512, 112, '#f4f6f6', '#0b5363', 'bold 72px Arial, sans-serif'), roughness: 0.5,
+  }), 0, 0.8, -2.641);
+  plate.rotation.y = Math.PI; plate.castShadow = false;
+  // задний бампер, диффузор, катафоты
+  add(box(1.94, 0.16, 0.12), trimMat, 0, 0.53, -2.56);
+  add(box(1.1, 0.035, 0.05), chromeMat, 0, 0.48, -2.61);
+  for (const s of [1, -1]) add(box(0.16, 0.03, 0.02), reflMat, s * 0.78, 0.6, -2.625);
+
+  // --- передок: световая полоса через всю ширину, фары, воздухозаборник ---
+  add(box(1.86, 0.06, 0.03), smokeMat, 0, 0.985, 2.635);
+  add(box(1.8, 0.024, 0.02), drlMat, 0, 0.985, 2.65);
+  for (const s of [1, -1]) {
+    add(box(0.03, 0.024, 0.32), drlMat, s * 0.98, 0.985, 2.4);
+    // фары: узкий тёмный блок с линзами по углам бампера
+    add(box(0.36, 0.11, 0.03), smokeMat, s * 0.74, 0.78, 2.665);
+    add(box(0.3, 0.022, 0.02), drlMat, s * 0.74, 0.815, 2.68);
+    for (const dx of [-0.08, 0.02, 0.12]) add(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 12).rotateX(Math.PI / 2), headMat, s * (0.74 + dx * s), 0.765, 2.68);
+    add(box(0.09, 0.03, 0.02), headMat, s * 0.82, 0.58, 2.625);
+  }
+  add(box(1.36, 0.15, 0.06), trimMat, 0, 0.58, 2.6);
+  for (let i = -5; i <= 5; i++) add(box(0.012, 0.11, 0.02), seamMat, i * 0.11, 0.58, 2.632);
+  add(box(0.9, 0.035, 0.05), chromeMat, 0, 0.485, 2.6);
+  add(box(0.16, 0.03, 0.01), chromeMat, 0, 0.9, 2.678);
+  // днище
+  add(box(1.8, 0.1, 4.4), trimMat, 0, 0.44, 0);
+
+  body.position.y = -T.comH;
+
+  // --- колёса: низкопрофильная резина, чёрные многоспицевые диски, бирюзовые суппорты ---
+  const tread = new THREE.CylinderGeometry(T.r, T.r, 0.3, 36, 1, true).rotateZ(Math.PI / 2);
+  const wall = new THREE.RingGeometry(0.315, T.r, 36);
+  const barrel = new THREE.CylinderGeometry(0.315, 0.315, 0.3, 32, 1, true).rotateZ(Math.PI / 2);
+  const lip = new THREE.TorusGeometry(0.315, 0.012, 6, 36).rotateY(Math.PI / 2);
+  const spokeGeo = box(0.26, 0.25, 0.034).translate(0, 0.16, 0);
+  const hubGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.28, 18).rotateZ(Math.PI / 2);
+  const discGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.03, 28).rotateZ(Math.PI / 2);
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.95, side: THREE.DoubleSide });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, metalness: 0.7, roughness: 0.25 });
+  const innerMat = new THREE.MeshStandardMaterial({ color: 0x08090a, roughness: 0.8, side: THREE.DoubleSide });
+  const discMat = new THREE.MeshStandardMaterial({ color: 0x7a7f86, metalness: 0.8, roughness: 0.45 });
+  const caliperMat = new THREE.MeshStandardMaterial({ color: 0x19b3c2, metalness: 0.3, roughness: 0.4 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x0b5363, metalness: 0.6, roughness: 0.3 });
+  const wheels = [];
+  for (let i = 0; i < 4; i++) {
+    const pivot = new THREE.Group();
+    const spin = new THREE.Group();
+    add(tread, tireMat, 0, 0, 0, spin);
+    for (const s of [1, -1]) {
+      const w = add(wall, tireMat, s * 0.15, 0, 0, spin); w.rotation.y = s * Math.PI / 2;
+      add(lip, rimMat, s * 0.148, 0, 0, spin);
+    }
+    add(barrel, innerMat, 0, 0, 0, spin);
+    add(discGeo, discMat, 0, 0, 0, spin);
+    for (let k = 0; k < 10; k++) {
+      const a = Math.floor(k / 2) * (Math.PI * 2 / 5) + (k % 2 ? 0.17 : -0.17);
+      add(spokeGeo, rimMat, 0, 0, 0, spin).rotation.x = a;
+    }
+    add(hubGeo, capMat, 0, 0, 0, spin);
+    add(box(0.07, 0.16, 0.1), caliperMat, 0, 0.17, -0.12, pivot).rotation.x = -0.6;
     pivot.add(spin);
     root.add(pivot);
     wheels.push({ pivot, spin });
